@@ -303,30 +303,6 @@ Output:
 Hello, Felix, Jenny!
 ```
 
-### Set delimiters ###
-
-You don't have to use mustaches, you can change the delimiters to
-anything you like.
-
-Template:
-
-```mustache
-{{=<% %>=}}
-Hello, <%name%>!
-```
-
-Data:
-
-```clj
-{:name "Felix"}
-```
-
-Output:
-
-```
-Hello, Felix!
-```
-
 ### Lambdas ###
 
 You can also call functions from templates.

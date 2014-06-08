@@ -55,77 +55,6 @@
   (replace-all regex (map (fn [char] [(str "\\\\\\" char) char true])
                           regex-chars)))
 
-(defn- process-set-delimiters
-  "Replaces custom set delimiters with mustaches."
-  [^String template data]
-  (let [builder (StringBuilder. template)
-        data (atom data)
-        open-delim (atom "\\{\\{")
-        close-delim (atom "\\}\\}")
-        set-delims (fn [open close]
-                     (doseq [[var delim]
-                             [[open-delim open] [close-delim close]]]
-                       (swap! var (constantly (escape-regex delim)))))]
-    (loop [offset 0]
-      (let [string (.toString builder)
-            custom-delim (not (= "\\{\\{" @open-delim))
-            matcher (re-matcher
-                     (re-pattern (str "(" @open-delim ".*?" @close-delim
-                                      (if custom-delim
-                                        (str "|\\{\\{.*?\\}\\}"))
-                                      ")"))
-                     string)]
-        (if (.find matcher offset)
-          (let [match-result (.toMatchResult matcher)
-                match-start (.start match-result)
-                match-end (.end match-result)
-                match (.substring string match-start match-end)]
-            (if (and custom-delim
-                     (= "{{" (.substring string match-start (+ match-start 2))))
-              (if-let [tag (re-find #"\{\{(.*?)\}\}" match)]
-                (do
-                  (.replace builder match-start match-end
-                            (str "\\{\\{" (second tag) "\\}\\}"))
-                  (recur match-end)))
-              (if-let [delim-change (re-find
-                                     (re-pattern (str @open-delim
-                                                      "=\\s*(.*?) (.*?)\\s*="
-                                                      @close-delim))
-                                     match)]
-                (do
-                  (apply set-delims (rest delim-change))
-                  (.delete builder match-start match-end)
-                  (recur match-start))
-                (if-let [tag (re-find
-                              (re-pattern (str @open-delim "(.*?)"
-                                               @close-delim))
-                              match)]
-                  (let [section-start (re-find (re-pattern
-                                                (str "^"
-                                                     @open-delim
-                                                     "\\s*#\\s*(.*?)\\s*"
-                                                     @close-delim))
-                                               (first tag))
-                        key (if section-start (keyword (second section-start)))
-                        value (if key (key @data))]
-                    (if (and value (fn? value)
-                             (not (and (= @open-delim "\\{\\{")
-                                       (= @close-delim "\\}\\}"))))
-                      (swap! data
-                             #(update-in % [key]
-                                         (fn [old]
-                                           (fn [data]
-                                             (str "{{="
-                                                  (unescape-regex @open-delim)
-                                                  " "
-                                                  (unescape-regex @close-delim)
-                                                  "=}}"
-                                                  (old data)))))))
-                    (.replace builder match-start match-end
-                              (str "{{" (second tag) "}}"))
-                    (recur match-end)))))))))
-    [(.toString builder) @data]))
-
 (defn- create-partial-replacements
   "Creates pairs of partial replacements."
   [template partials]
@@ -135,8 +64,7 @@
                                         (name k) "\\s*\\}\\}"))
                  indent (nth (first (re-seq (re-pattern regex) template)) 2)]
              [[(str "\\{\\{>\\s*" (name k) "\\s*\\}\\}")
-               (first (process-set-delimiters (indent-partial (str (k partials))
-                                                              indent) {}))]]))))
+               (indent-partial (str (k partials)) indent)]]))))
 
 (defn- include-partials
   "Include partials within the template."
@@ -316,7 +244,6 @@
   "Preprocesses template and data (e.g. removing comments)."
   [template data partials]
   (let [template (join-standalone-delimiter-tags template)
-        [template data] (process-set-delimiters template data)
         template (join-standalone-tags template)
         template (remove-comments template)
         template (include-partials template partials)
